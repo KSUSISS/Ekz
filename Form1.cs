@@ -1,14 +1,10 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.ComponentModel;
-using System.Data;
-using System.Drawing;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using System.Windows.Forms;
-using Xceed.Words.NET;
 using System.IO;
+using System.Windows.Forms;
+using QuestPDF.Fluent;
+using QuestPDF.Helpers;
+using QuestPDF.Infrastructure;
+
 
 
 namespace WindowsFormsApp1
@@ -18,6 +14,7 @@ namespace WindowsFormsApp1
         public Form1()
         {
             InitializeComponent();
+            QuestPDF.Settings.License = LicenseType.Community;
         }
 
         private string NumberToWords(string number)
@@ -32,20 +29,10 @@ namespace WindowsFormsApp1
 
         private void btnGenerate_Click(object sender, EventArgs e)
         {
-            // 1. Указываем путь к шаблону (он должен лежать в папке с .exe файлом)
-            string templatePath = Path.Combine(Application.StartupPath, "template.docx");
-
-            // Проверяем, есть ли шаблон на месте
-            if (!File.Exists(templatePath))
-            {
-                MessageBox.Show("Ошибка: Файл template.docx не найден в папке с программой!\nПоложи его в: " + Application.StartupPath);
-                return;
-            }
-
-            // 2. Настраиваем окно сохранения файла
+            // 1. Настраиваем окно сохранения файла (для PDF)
             SaveFileDialog sfd = new SaveFileDialog();
-            sfd.Filter = "Документ Word|*.docx";
-            sfd.FileName = "Договор_Дарения_" + txtDoneeName.Text + ".docx";
+            sfd.Filter = "Документ PDF|*.pdf";
+            sfd.FileName = "Договор_Дарения_" + txtDoneeName.Text + ".pdf";
             sfd.Title = "Выберите место для сохранения договора";
 
             if (sfd.ShowDialog() == DialogResult.OK)
@@ -56,86 +43,83 @@ namespace WindowsFormsApp1
                 string totalAreaNum = txtFlatArea.Text;
                 string totalAreaWords = NumberToWords(totalAreaNum);
 
-                // Заглушки для инвентаризационной оценки, т.к. поля нет
                 string valuationNum = "0";
                 string valuationWords = NumberToWords(valuationNum);
 
                 try
                 {
-                    // 3. Работаем с документом
-                    using (DocX document = DocX.Load(templatePath))
+                    // 2. Создаем и генерируем PDF-документ
+                    Document.Create(container =>
                     {
-                        // ----- Базовые замены (как у тебя) -----
-                        document.ReplaceText("{CITY}", txtCity.Text);
-                        document.ReplaceText("{DATE}", txtDate.Text);
+                        container.Page(page =>
+                        {
+                            page.Size(PageSizes.A4);
+                            page.Margin(30);
+                            page.DefaultTextStyle(x => x.FontSize(11).FontFamily(Fonts.Arial));
 
-                        // ----- Даритель (Используем имеющиеся поля и заглушки) -----
-                        document.ReplaceText("{DONOR_NAME}", txtDonorName.Text);
-                        document.ReplaceText("{DONOR_PASSPORT}", txtDonorPassport.Text);
-                        document.ReplaceText("{DONOR_ADDRESS}", txtDonorAddress.Text);
+                            page.Content()
+                                .Column(column =>
+                                {
+                                    column.Spacing(10);
 
-                        // Заглушки для недостающих деталей паспорта Дарителя
-                        document.ReplaceText("{DONOR_PASSPORT_SERIES}", "XX");
-                        document.ReplaceText("{DONOR_PASSPORT_NUMBER}", "000000");
-                        document.ReplaceText("{DONOR_PASSPORT_ISSUER}", "[Орган выдачи Дарителя]");
-                        document.ReplaceText("{DONOR_PASSPORT_ISSUE_DATE}", "[Дата выдачи Дарителя]");
-                        document.ReplaceText("{DONOR_PASSPORT_CODE}", "[Код Дарителя]");
+                                    column.Item().Text("Договор дарения квартиры").Bold().FontSize(14).AlignLeft();
+                                    column.Item().Text($"г. {txtCity.Text}").AlignLeft();
+                                    column.Item().Text($"«{txtDate.Text}»").AlignRight();
 
-                        // ----- Одаряемый (Используем имеющиеся поля и заглушки) -----
-                        document.ReplaceText("{DONEE_NAME}", txtDoneeName.Text);
-                        document.ReplaceText("{DONEE_PASSPORT}", txtDoneePassport.Text);
-                        document.ReplaceText("{DONEE_ADDRESS}", txtDoneeAddress.Text);
+                                    // --- 1. ПРЕДМЕТ ДОГОВОРА ---
+                                    column.Item().Text("1. Предмет договора").Bold().FontSize(12);
 
-                        // Заглушки для недостающих деталей паспорта Одаряемого
-                        document.ReplaceText("{DONEE_PASSPORT_SERIES}", "XX");
-                        document.ReplaceText("{DONEE_PASSPORT_NUMBER}", "000000");
-                        document.ReplaceText("{DONEE_PASSPORT_ISSUER}", "[Орган выдачи Одаряемого]");
-                        document.ReplaceText("{DONEE_PASSPORT_ISSUE_DATE}", "[Дата выдачи Одаряемого]");
-                        document.ReplaceText("{DONEE_PASSPORT_CODE}", "[Код Одаряемого]");
+                                    string donorDetails = $"{txtDonorName.Text}, паспорт серии [XX], N [000000], выдан [Орган выдачи], зарегистрированный(ая) по адресу: {txtDonorAddress.Text}, именуемый в дальнейшем \"Даритель\"";
+                                    string doneeDetails = $"{txtDoneeName.Text}, паспорт серии [XX], N [000000], выдан [Орган выдачи], зарегистрированный(ая) по адресу: {txtDoneeAddress.Text}, именуемый в дальнейшем \"Одаряемый\"";
 
-                        // ----- Детали Квартиры -----
-                        document.ReplaceText("{FLAT_ADDRESS}", txtFlatAddress.Text);
-                        document.ReplaceText("{FLAT_DOCS}", txtFlatRegData.Text);
+                                    column.Item().Text(text =>
+                                    {
+                                        text.Span(donorDetails).FontSize(11);
+                                        text.Span(" и ").FontSize(11);
+                                        text.Span(doneeDetails).FontSize(11);
+                                        text.Span(", заключили настоящий договор о нижеследующем:").FontSize(11);
+                                    });
 
-                        // Заглушки для этажа, комнат и жилой площади
-                        document.ReplaceText("{FLAT_FLOOR}", "[Этаж]");
-                        document.ReplaceText("{FLAT_ROOMS}", "[Кол-во комнат]");
-                        document.ReplaceText("{FLAT_LIVE_AREA_NUM}", "0");
-                        document.ReplaceText("{FLAT_LIVE_AREA_PROPIS}", "[НОЛЬ ПРОПИСЬЮ]");
+                                    column.Item().Text(text =>
+                                    {
+                                        text.Line($"1.1. По настоящему договору Даритель безвозмездно передает Одаряемому в собственность квартиру, находящуюся по адресу: {txtFlatAddress.Text} (далее - Квартира), а Одаряемый принимает ее в качестве дара.");
+                                        text.Line($"1.3. Квартира расположена на [Этаж] этаже [Кол-во этажей] этажного дома [Год постройки] года постройки, состоит из [Кол-во комнат] комнат, общей площадью {totalAreaNum} ({totalAreaWords}) кв. м, жилой площадью [Жилая площадь] кв. м.");
+                                        text.Line($"1.4. Инвентаризационная оценка Квартиры составляет {valuationNum} ({valuationWords}) рублей.");
+                                    });
 
-                        // Замена общей площади цифрами и прописью
-                        document.ReplaceText("{FLAT_AREA_NUM}", totalAreaNum); // Общая площадь цифрами
-                        document.ReplaceText("{FLAT_AREA_PROPIS}", totalAreaWords); // Общая площадь прописью
+                                    // --- 7. Реквизиты и подписи сторон ---
+                                    column.Item().PaddingTop(20).Text("7. Реквизиты и подписи сторон").Bold().FontSize(12);
 
-                        // Замена оценки цифрами и прописью (используем заглушки)
-                        document.ReplaceText("{FLAT_VALUATION_NUM}", valuationNum);
-                        document.ReplaceText("{FLAT_VALUATION_PROPIS}", valuationWords);
+                                    column.Item().Row(row =>
+                                    {
+                                        row.RelativeItem().Column(col =>
+                                        {
+                                            col.Item().Text("Даритель").Bold();
+                                            col.Item().Text($"[ФИО: {txtDonorName.Text}]");
+                                            col.Item().Text("[подпись, инициалы, фамилия]");
+                                        });
 
-                        // Заглушки для остальных полей договора
-                        document.ReplaceText("{BUILD_YEAR}", "[Год постройки]"); // Год постройки
-                        document.ReplaceText("{BTI_CITY}", "[Город/Область БТИ]"); // Справка БТИ
-                        document.ReplaceText("{BTI_DATE}", "[Дата справки БТИ]");
-                        document.ReplaceText("{BTI_NUMBER}", "[Номер справки БТИ]");
-                        document.ReplaceText("{FREE_DOC_NAME}", "[Название справки о свободе]"); // Справка о свободе
-                        document.ReplaceText("{FREE_DOC_DATE}", "[Дата справки о свободе]");
-                        document.ReplaceText("{FREE_DOC_NUMBER}", "[Номер справки о свободе]");
-                        document.ReplaceText("{REG_ORG_NAME}", "[Наименование органа регистрации]"); // Орган регистрации
-                        document.ReplaceText("{REG_EXPENSES}", "[Даритель/Одаряемый]"); // Расходы на регистрацию
-                        document.ReplaceText("{TRANSFER_TERM}", "[Срок передачи]"); // Срок передачи
-                        document.ReplaceText("{REG_ORG_END}", "[Наименование органа регистрации прав]"); // Конец договора
+                                        row.RelativeItem().Column(col =>
+                                        {
+                                            col.Item().Text("Одаряемый").Bold();
+                                            col.Item().Text($"[ФИО: {txtDoneeName.Text}]");
+                                            col.Item().Text("[подпись, инициалы, фамилия]");
+                                        });
+                                    });
 
-                        // Сохраняем по выбранному пользователем пути
-                        document.SaveAs(outputPath);
-                    }
+                                    // Добавь остальные пункты договора по аналогии
+                                });
+                        });
+                    }).GeneratePdf(outputPath); // Генерируем и сохраняем
 
-                    MessageBox.Show("Договор успешно создан и сохранен!", "Успех", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    MessageBox.Show("Договор успешно создан и сохранен в PDF!", "Успех", MessageBoxButtons.OK, MessageBoxIcon.Information);
 
                     // Предлагаем сразу открыть файл
                     System.Diagnostics.Process.Start(outputPath);
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show("Произошла ошибка: " + ex.Message, "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    MessageBox.Show("Произошла ошибка при генерации PDF: " + ex.Message, "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 }
             }
             }
